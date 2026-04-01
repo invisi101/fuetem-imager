@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=fuetem-imager
+Comment=Convert image format and dimensions
+Exec=fuetem-imager
+Icon=fuetem-imager
+Categories=Utility;Graphics;
+StartupNotify=false

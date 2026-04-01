@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e"/>
+      <stop offset="100%" style="stop-color:#16213e"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f472b6"/>
+      <stop offset="100%" style="stop-color:#818cf8"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#34d399"/>
+      <stop offset="100%" style="stop-color:#06b6d4"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="glow-strong">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- Rounded square background -->
+  <rect x="4" y="4" width="120" height="120" rx="24" fill="url(#bg)" stroke="#2d2d5e" stroke-width="2"/>
+  <!-- Image frame -->
+  <rect x="32" y="30" width="64" height="50" rx="6" fill="none" stroke="url(#accent)" stroke-width="3" filter="url(#glow)"/>
+  <!-- Mountain/landscape inside frame -->
+  <path d="M38 72 L52 52 L62 64 L70 54 L90 72 Z" fill="none" stroke="url(#green)" stroke-width="2.5" stroke-linejoin="round" filter="url(#glow-strong)"/>
+  <!-- Sun circle -->
+  <circle cx="78" cy="44" r="6" fill="none" stroke="url(#green)" stroke-width="2" filter="url(#glow)"/>
+  <!-- Resize arrows -->
+  <path d="M50 88 L40 88 L40 82" stroke="url(#accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#glow)"/>
+  <path d="M78 88 L88 88 L88 82" stroke="url(#accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#glow)"/>
+  <!-- FI text -->
+  <text x="64" y="108" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="800" font-size="20" fill="url(#accent)" filter="url(#glow)">FI</text>
+</svg>
