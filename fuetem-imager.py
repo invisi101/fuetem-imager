@@ -489,6 +489,14 @@ class FuetemImagerApp(Adw.Application):
         )
         edit_scroll.set_child(self.content_box)
 
+        # Branding heading
+        branding = Gtk.Label()
+        branding.set_markup(
+            '<span font_family="Vegan Style Personal Use" size="30000" foreground="#f472b6">Fuetem Imager</span>'
+        )
+        branding.set_halign(Gtk.Align.START)
+        self.content_box.append(branding)
+
         self._build_select_section()
         self._build_preview_section()
         self._build_info_section()
