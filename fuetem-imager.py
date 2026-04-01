@@ -369,21 +369,19 @@ def add_recent(path):
 # ── PIL ↔ GdkPixbuf helpers ─────────────────────────────────────────────────
 
 def pil_to_pixbuf(pil_img):
-    """Convert a PIL Image to GdkPixbuf."""
+    """Convert a PIL Image to GdkPixbuf (keeps reference to data alive)."""
     img = pil_img.convert('RGBA')
     data = img.tobytes()
-    return GdkPixbuf.Pixbuf.new_from_data(
-        data, GdkPixbuf.Colorspace.RGB, True, 8,
+    pixbuf = GdkPixbuf.Pixbuf.new_from_bytes(
+        GLib.Bytes.new(data), GdkPixbuf.Colorspace.RGB, True, 8,
         img.width, img.height, img.width * 4,
     )
+    return pixbuf
 
 def pil_to_texture(pil_img):
     """Convert a PIL Image to Gdk.Texture for Gtk.Picture."""
-    buf = io.BytesIO()
-    pil_img.convert('RGBA').save(buf, format='PNG')
-    buf.seek(0)
-    gbytes = GLib.Bytes.new(buf.getvalue())
-    return Gdk.Texture.new_from_bytes(gbytes)
+    pixbuf = pil_to_pixbuf(pil_img)
+    return Gdk.Texture.new_for_pixbuf(pixbuf)
 
 def estimate_file_size(pil_img, fmt, quality=90):
     """Estimate output file size by encoding to a buffer."""
@@ -462,6 +460,8 @@ class FuetemImagerApp(Adw.Application):
         self._updating_dims = False
         self._preview_bg = 'dark'      # 'dark', 'checker', 'light'
         self._temp_files = []
+        self._orig_format = ''         # preserved across transforms
+        self._orig_dpi = (72, 72)      # preserved across transforms
 
         # ── Header bar ───────────────────────────────────────────────────
         self.header = Adw.HeaderBar()
@@ -1131,6 +1131,8 @@ class FuetemImagerApp(Adw.Application):
         return False
 
     def _on_recent_selected(self, dropdown, _pspec):
+        if getattr(self, '_refreshing_recent', False):
+            return
         idx = dropdown.get_selected()
         recents = load_recent()
         if 0 <= idx < len(recents):
@@ -1149,6 +1151,8 @@ class FuetemImagerApp(Adw.Application):
         self.source_path = path
         self.pil_original = pil_img.copy()
         self.pil_image = pil_img.copy()
+        self._orig_format = pil_img.format or Path(path).suffix.lstrip('.').upper()
+        self._orig_dpi = pil_img.info.get('dpi', (72, 72))
         self.undo_stack.clear()
         self.btn_undo.set_sensitive(False)
 
@@ -1166,11 +1170,13 @@ class FuetemImagerApp(Adw.Application):
         self._update_sensitivity()
 
     def _refresh_recent_dropdown(self):
+        self._refreshing_recent = True
         recents = load_recent()
         model = Gtk.StringList()
         for p in recents:
             model.append(os.path.basename(p))
         self.recent_dropdown.set_model(model)
+        self._refreshing_recent = False
 
     # ══════════════════════════════════════════════════════════════════════
     #  Refresh helpers
@@ -1181,7 +1187,7 @@ class FuetemImagerApp(Adw.Application):
         if not img:
             return
 
-        self.lbl_format.set_label(img.format or Path(self.source_path).suffix.lstrip('.').upper())
+        self.lbl_format.set_label(self._orig_format)
         self.lbl_dimensions.set_label(f'{img.width} x {img.height} px')
         self.lbl_filesize.set_label(format_size(os.path.getsize(self.source_path)))
         self.lbl_color_mode.set_label(img.mode)
@@ -1193,8 +1199,8 @@ class FuetemImagerApp(Adw.Application):
                      'LA': '8', 'PA': '8', 'RGBa': '8'}
         self.lbl_bit_depth.set_label(f'{mode_bits.get(img.mode, "?")} bits/channel')
 
-        # DPI
-        dpi = img.info.get('dpi', (72, 72))
+        # DPI — use stored original since transforms lose img.info
+        dpi = self._orig_dpi
         try:
             dpi_x, dpi_y = int(dpi[0]), int(dpi[1])
         except (TypeError, IndexError):
@@ -1254,7 +1260,7 @@ class FuetemImagerApp(Adw.Application):
     def _auto_select_format(self):
         if not self.pil_image:
             return
-        fmt = (self.pil_image.format or '').lower()
+        fmt = self._orig_format.lower()
         if fmt in SAVE_FORMATS:
             self.format_dropdown.set_selected(SAVE_FORMATS.index(fmt))
 
@@ -1271,9 +1277,17 @@ class FuetemImagerApp(Adw.Application):
         fmt = SAVE_FORMATS[idx]
         quality = int(self.quality_scale.get_value())
 
+        # Read widget values on main thread, then do heavy work in background
+        new_w = int(self.spin_width.get_value())
+        new_h = int(self.spin_height.get_value())
+        img_copy = self.pil_image.copy()
+
         def _estimate():
-            img = self._build_output_image()
-            size = estimate_file_size(img, fmt, quality)
+            if (new_w, new_h) != img_copy.size:
+                resized = img_copy.resize((new_w, new_h), Image.LANCZOS)
+            else:
+                resized = img_copy
+            size = estimate_file_size(resized, fmt, quality)
             GLib.idle_add(self._set_est_size, size)
 
         threading.Thread(target=_estimate, daemon=True).start()
@@ -1421,9 +1435,10 @@ class FuetemImagerApp(Adw.Application):
             return
         idx = self.scale_dropdown.get_selected()
         pct = int(SCALE_PRESETS[idx].rstrip('%'))
-        orig = self.pil_original
-        new_w = max(1, int(orig.width * pct / 100))
-        new_h = max(1, int(orig.height * pct / 100))
+        # Scale relative to current image dimensions
+        cur_w, cur_h = self.pil_image.size
+        new_w = max(1, int(cur_w * pct / 100))
+        new_h = max(1, int(cur_h * pct / 100))
         self._push_undo()
         self.pil_image = self.pil_image.resize((new_w, new_h), Image.LANCZOS)
         self._sync_dims_to_image()
@@ -1560,8 +1575,8 @@ class FuetemImagerApp(Adw.Application):
         if fmt in ('png', 'jpeg', 'tiff', 'webp'):
             kwargs['dpi'] = (dpi, dpi)
 
-        # Strip EXIF
-        if self.chk_strip_exif.get_active():
+        # Strip EXIF — only for formats that accept the exif kwarg
+        if self.chk_strip_exif.get_active() and fmt in ('jpeg', 'png', 'webp', 'avif'):
             kwargs['exif'] = b''
 
         return kwargs
